@@ -11,11 +11,11 @@ import { ServiceWorkerRegister } from "./sw-register"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Ob-havo Ilovasi | Real vaqt Ob-havo Prognozlari",
-  description: "Open-meteo tomonidan quvvatlanadigan go'zal ob-havo ilovamiz bilan aniq ob-havo prognozlarini oling",
+  title: "Weather App | Real-time Weather Forecasts",
+  description: "Get accurate weather forecasts with our beautiful weather app powered by Open-meteo",
   manifest: "/manifest.json",
   themeColor: "#0ea5e9",
-  generator: 'Karimov Ahmadjon'
+  generator: 'Weather App Team'
 }
 
 export default function RootLayout({
@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="uz" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppProvider>

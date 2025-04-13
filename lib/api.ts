@@ -22,6 +22,7 @@ export interface WeatherData {
     rain: Float32Array
     snowfall: Float32Array
   }
+  isDefaultLocation?: boolean // Flag to indicate if this location is the default/fallback
 }
 
 // Helper function to form time ranges
@@ -33,38 +34,38 @@ export function determineWeatherCondition(weatherCode: number, rain = 0, tempera
   // WMO codes: https://www.nodc.noaa.gov/archive/arc0021/0002199/1.1/data/0-data/HTML/WMO-CODE/WMO4677.HTM
   
   // Basic conditions by weather code
-  if (weatherCode === 0) return temperature > 25 ? "Quyoshli" : "Ochiq"
+  if (weatherCode === 0) return temperature > 25 ? "Sunny" : "Clear"
   
   // Mostly clear, partly cloudy
-  if (weatherCode === 1 || weatherCode === 2) return "Qisman Bulutli"
+  if (weatherCode === 1 || weatherCode === 2) return "Partly Cloudy"
   
   // Overcast
-  if (weatherCode === 3) return "Bulutli"
+  if (weatherCode === 3) return "Cloudy"
   
   // Fog or mist
-  if (weatherCode >= 45 && weatherCode <= 48) return "Tumanli"
+  if (weatherCode >= 45 && weatherCode <= 48) return "Foggy"
   
   // Drizzle
-  if (weatherCode >= 51 && weatherCode <= 55) return "Yengil Yomg'ir"
+  if (weatherCode >= 51 && weatherCode <= 55) return "Light Rain"
   
   // Rain
-  if (weatherCode >= 61 && weatherCode <= 65) return "Yomg'ir"
-  if (weatherCode >= 80 && weatherCode <= 82) return "Yomg'ir Jalasi"
+  if (weatherCode >= 61 && weatherCode <= 65) return "Rain"
+  if (weatherCode >= 80 && weatherCode <= 82) return "Heavy Rain"
   
   // Snow
-  if (weatherCode >= 71 && weatherCode <= 77) return "Qor"
-  if (weatherCode >= 85 && weatherCode <= 86) return "Qor Yog'ishi"
+  if (weatherCode >= 71 && weatherCode <= 77) return "Snow"
+  if (weatherCode >= 85 && weatherCode <= 86) return "Snow Shower"
   
   // Thunderstorm
-  if (weatherCode >= 95 && weatherCode <= 99) return "Momaqaldiroq"
+  if (weatherCode >= 95 && weatherCode <= 99) return "Thunderstorm"
   
   // Fallback based on rain and temperature
-  if (rain > 0.5) return "Yomg'ir"
-  if (rain > 0) return "Yengil Yomg'ir"
-  if (temperature > 30) return "Issiq"
-  if (temperature > 25) return "Quyoshli"
-  if (temperature > 15) return "Qisman Bulutli"
-  return "Bulutli"
+  if (rain > 0.5) return "Rain"
+  if (rain > 0) return "Light Rain"
+  if (temperature > 30) return "Hot"
+  if (temperature > 25) return "Sunny"
+  if (temperature > 15) return "Partly Cloudy"
+  return "Cloudy"
 }
 
 // Function to get day name from date
@@ -73,10 +74,10 @@ function getDayName(date: Date): string {
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)
   
-  if (date.toDateString() === today.toDateString()) return "Bugun"
-  if (date.toDateString() === tomorrow.toDateString()) return "Ertaga"
+  if (date.toDateString() === today.toDateString()) return "Today"
+  if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow"
   
-  const weekdayNames = ["Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
+  const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
   return weekdayNames[date.getDay()]
 }
 
@@ -227,6 +228,7 @@ export async function fetchWeatherData(
           rain: hourlyRain,
           snowfall: hourlySnowfall,
         },
+        isDefaultLocation: false,
       }
     } catch (error) {
       clearTimeout(timeoutId)
@@ -252,7 +254,7 @@ function generateMockWeatherData(locationName: string): WeatherData {
 
   // Is it Tashkent? Use more accurate mock data if so
   const isTashkent = locationName.toLowerCase().includes("tashkent") || 
-                     locationName.toLowerCase().includes("тошкент") || 
+                     locationName.toLowerCase().includes("toshkent") || 
                      locationName.toLowerCase().includes("ташкент");
   
   // Customize temperature based on location and season
@@ -292,7 +294,7 @@ function generateMockWeatherData(locationName: string): WeatherData {
 
   // Generate 5-day forecast
   const forecast = []
-  const days = ["Bugun", "Ertaga", "Chorshanba", "Payshanba", "Juma"]
+  const days = ["Today", "Tomorrow", "Wednesday", "Thursday", "Friday"]
 
   for (let i = 0; i < 5; i++) {
     const dayVariation = Math.random() * 4 - 2; // -2 to +2 degrees variation between days
@@ -323,6 +325,7 @@ function generateMockWeatherData(locationName: string): WeatherData {
       rain: hourlyRain,
       snowfall: hourlySnowfall,
     },
+    isDefaultLocation: false,
   }
 }
 
@@ -335,11 +338,11 @@ export async function fetchForecast(latitude: number, longitude: number): Promis
 
     // Return mock forecast data
     return [
-      { day: "Bugun", high: 24, low: 18, condition: "Qisman Bulutli" },
-      { day: "Ertaga", high: 26, low: 19, condition: "Quyoshli" },
-      { day: "Chorshanba", high: 28, low: 20, condition: "Quyoshli" },
-      { day: "Payshanba", high: 25, low: 19, condition: "Bulutli" },
-      { day: "Juma", high: 23, low: 17, condition: "Yomg'ir" },
+      { day: "Today", high: 24, low: 18, condition: "Partly Cloudy" },
+      { day: "Tomorrow", high: 26, low: 19, condition: "Sunny" },
+      { day: "Wednesday", high: 28, low: 20, condition: "Sunny" },
+      { day: "Thursday", high: 25, low: 19, condition: "Cloudy" },
+      { day: "Friday", high: 23, low: 17, condition: "Rain" },
     ]
   }
 }
@@ -347,18 +350,18 @@ export async function fetchForecast(latitude: number, longitude: number): Promis
 // Add this function for better weather condition determination from data
 export function determineDetailedCondition(temperature: number, humidity: number, rain: number, snowfall: number, windSpeed: number): string {
   // First check precipitation
-  if (snowfall > 0) return "Qor";
-  if (rain > 1) return "Kuchli Yomg'ir";
-  if (rain > 0.1) return "Yomg'ir";
-  if (rain > 0) return "Yengil Yomg'ir";
+  if (snowfall > 0) return "Snow";
+  if (rain > 1) return "Heavy Rain";
+  if (rain > 0.1) return "Rain";
+  if (rain > 0) return "Light Rain";
   
   // Then check other factors
-  if (humidity > 90) return "Tumanli";
-  if (humidity > 80 && temperature < 10) return "Bulutli";
-  if (temperature > 30) return "Issiq";
-  if (temperature > 25) return humidity > 60 ? "Nam" : "Quyoshli";
-  if (temperature > 15) return humidity > 70 ? "Qisman Bulutli" : "Ochiq";
-  if (temperature < 0) return "Sovuq";
+  if (humidity > 90) return "Foggy";
+  if (humidity > 80 && temperature < 10) return "Cloudy";
+  if (temperature > 30) return "Hot";
+  if (temperature > 25) return humidity > 60 ? "Humid" : "Sunny";
+  if (temperature > 15) return humidity > 70 ? "Partly Cloudy" : "Clear";
+  if (temperature < 0) return "Cold";
   
-  return "Qisman Bulutli";
+  return "Partly Cloudy";
 }

@@ -1,9 +1,51 @@
+// Add a mapping of major cities to ensure accurate results
+const MAJOR_CITIES: Record<string, { latitude: number; longitude: number }> = {
+  "tashkent": { latitude: 41.2995, longitude: 69.2401 },
+  "toshkent": { latitude: 41.2995, longitude: 69.2401 }, // Uzbek spelling
+  "samarkand": { latitude: 39.6270, longitude: 66.9750 },
+  "samarqand": { latitude: 39.6270, longitude: 66.9750 }, // Uzbek spelling
+  "bukhara": { latitude: 39.7680, longitude: 64.4219 },
+  "buxoro": { latitude: 39.7680, longitude: 64.4219 }, // Uzbek spelling
+  "namangan": { latitude: 41.0011, longitude: 71.6725 },
+  "andijan": { latitude: 40.7829, longitude: 72.3442 },
+  "andijon": { latitude: 40.7829, longitude: 72.3442 }, // Uzbek spelling
+  "nukus": { latitude: 42.4628, longitude: 59.6166 },
+  "fergana": { latitude: 40.3842, longitude: 71.7789 },
+  "farg'ona": { latitude: 40.3842, longitude: 71.7789 }, // Uzbek spelling
+  "qarshi": { latitude: 38.8578, longitude: 65.7881 },
+  "termez": { latitude: 37.2286, longitude: 67.2783 },
+  "termiz": { latitude: 37.2286, longitude: 67.2783 }, // Uzbek spelling
+  "gulistan": { latitude: 40.4897, longitude: 68.7898 },
+  "jizzakh": { latitude: 40.1216, longitude: 67.8422 },
+  "jizzax": { latitude: 40.1216, longitude: 67.8422 }, // Uzbek spelling
+  // Add common international cities
+  "new york": { latitude: 40.7128, longitude: -74.0060 },
+  "london": { latitude: 51.5074, longitude: -0.1278 },
+  "paris": { latitude: 48.8566, longitude: 2.3522 },
+  "tokyo": { latitude: 35.6762, longitude: 139.6503 },
+  "beijing": { latitude: 39.9042, longitude: 116.4074 },
+  "dubai": { latitude: 25.2048, longitude: 55.2708 },
+  "istanbul": { latitude: 41.0082, longitude: 28.9784 },
+  "moscow": { latitude: 55.7558, longitude: 37.6173 },
+  "singapore": { latitude: 1.3521, longitude: 103.8198 },
+  "sydney": { latitude: -33.8688, longitude: 151.2093 }
+};
+
+// Define a custom error type to ensure proper error shape
+interface LocationError extends Error {
+  code: number;
+  message: string;
+}
+
 export async function getCurrentLocation(): Promise<{ latitude: number; longitude: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      // Fallback to default coordinates if geolocation is not supported
-      resolve(getDefaultLocation())
-      return
+      // Create a properly formatted error object
+      const error: LocationError = new Error("Geolocation is not supported by this browser") as LocationError;
+      error.code = 0;
+      console.warn("Geolocation not supported");
+      reject(error);
+      return;
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -11,16 +53,20 @@ export async function getCurrentLocation(): Promise<{ latitude: number; longitud
         resolve({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
-        })
+        });
       },
-      (error) => {
-        console.warn("Geolocation error:", error.message)
-        // Fallback to default coordinates on error
-        resolve(getDefaultLocation())
+      (geoError) => {
+        // GeolocationPositionError has code and message properties
+        console.warn("Geolocation error:", geoError.message);
+        
+        // Create a properly formatted error object with known properties
+        const error: LocationError = new Error(geoError.message || "Unknown geolocation error") as LocationError;
+        error.code = geoError.code || 0;
+        reject(error);
       },
-      { timeout: 10000 },
-    )
-  })
+      { timeout: 10000, maximumAge: 60000 },
+    );
+  });
 }
 
 // Update the getLocationByName function with better error handling and logging
@@ -28,12 +74,35 @@ export async function getCurrentLocation(): Promise<{ latitude: number; longitud
 export async function getLocationByName(locationName: string): Promise<{ latitude: number; longitude: number }> {
   try {
     console.log(`Searching for location: ${locationName}`)
+    
+    // Check if the location is a known major city (case-insensitive)
+    const normalizedInput = locationName.trim().toLowerCase();
+    
+    // Check for direct matches in our predefined list
+    if (MAJOR_CITIES[normalizedInput]) {
+      const coords = MAJOR_CITIES[normalizedInput];
+      console.log(`Using predefined coordinates for ${locationName}: ${coords.latitude}, ${coords.longitude}`);
+      return coords;
+    }
+    
+    // Otherwise check for partial matches in major cities
+    for (const [cityName, coords] of Object.entries(MAJOR_CITIES)) {
+      if (normalizedInput.includes(cityName) || cityName.includes(normalizedInput)) {
+        console.log(`Found partial match for ${locationName} with ${cityName}`);
+        return coords;
+      }
+    }
 
-    // Using OpenMeteo Geocoding API
+    // Using OpenMeteo Geocoding API which doesn't require API key
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
     const response = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationName)}&count=1&language=en&format=json`,
-      { signal: AbortSignal.timeout(10000) }, // Add timeout to prevent long waits
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationName)}&count=5&language=en&format=json`,
+      { signal: controller.signal }
     )
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.error(`API responded with status: ${response.status}`)
@@ -50,9 +119,14 @@ export async function getLocationByName(locationName: string): Promise<{ latitud
       return getDefaultLocation()
     }
 
+    // Check if any result has a high match score - prefer administrative divisions (capitals, major cities)
+    const bestMatch = data.results.find(
+      (result: any) => result.admin_level === 4 || result.admin_level === 6 || result.feature_code === "PPLC"
+    ) || data.results[0]; // Fall back to first result if no administrative match
+    
     return {
-      latitude: data.results[0].latitude,
-      longitude: data.results[0].longitude,
+      latitude: bestMatch.latitude,
+      longitude: bestMatch.longitude,
     }
   } catch (error) {
     console.error("Error getting location by name:", error)
@@ -68,10 +142,15 @@ export async function getLocationName(latitude: number, longitude: number): Prom
     
     // Try to fetch location name from API with expanded parameters for better results
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      
       const response = await fetch(
         `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${latitude}&longitude=${longitude}&language=en&format=json`,
-        { signal: AbortSignal.timeout(8000) } // Longer timeout for better resolution
+        { signal: controller.signal }
       )
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API responded with status: ${response.status}`)
@@ -114,13 +193,18 @@ export async function getLocationName(latitude: number, longitude: number): Prom
       // Try alternative geocoding service if first one fails
       try {
         console.log("Trying alternative geocoding service");
+        const altController = new AbortController();
+        const altTimeoutId = setTimeout(() => altController.abort(), 8000);
+        
         const response = await fetch(
           `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&zoom=12`,
           { 
             headers: { 'User-Agent': 'WeatherApp/1.0' },
-            signal: AbortSignal.timeout(8000)
+            signal: altController.signal
           }
         );
+        
+        clearTimeout(altTimeoutId);
 
         if (response.ok) {
           const data = await response.json();
