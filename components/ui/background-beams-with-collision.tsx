@@ -3,6 +3,16 @@ import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 import React, { useRef, useState, useEffect } from "react"
 
+// Define a shadow glow style for the droplets based on theme
+const shadowGlowStyle = {
+  light: {
+    boxShadow: "0 0 8px 2px rgba(37, 99, 235, 0.8)"
+  },
+  dark: {
+    boxShadow: "0 0 8px 2px rgba(219, 234, 254, 0.8)"
+  }
+};
+
 export const BackgroundBeamsWithCollision = ({
   children,
   className,
@@ -51,11 +61,24 @@ export const BackgroundBeamsWithCollision = ({
     )
   }, [isMobile])
 
+  // Add CSS variables for theme-based styling
+  const containerStyle = {
+    '--beam-from-color-light': 'var(--blue-600)',
+    '--beam-via-color-light': 'var(--blue-500)',
+    '--beam-from-color-dark': 'var(--blue-300)',
+    '--beam-via-color-dark': 'var(--blue-100)',
+    '--glow-color-light': 'rgba(37, 99, 235, 0.8)',
+    '--glow-color-dark': 'rgba(219, 234, 254, 0.8)',
+    '--glow-shadow-light': '0 0 8px 2px var(--glow-color-light)',
+    '--glow-shadow-dark': '0 0 8px 2px var(--glow-color-dark)',
+  } as React.CSSProperties;
+
   return (
     <div
       ref={parentRef}
+      style={containerStyle}
       className={cn(
-        "h-96 md:h-[40rem] bg-gradient-to-b from-blue-400 to-blue-600 dark:from-blue-700 dark:to-blue-900 relative flex items-center w-full justify-center overflow-hidden",
+        "h-96 md:h-[40rem] bg-gradient-to-b from-blue-400 to-blue-600 dark:from-blue-700 dark:to-blue-900 relative flex items-center w-full justify-center overflow-hidden [--glow-shadow:var(--glow-shadow-light)] dark:[--glow-shadow:var(--glow-shadow-dark)]",
         className
       )}
     >
@@ -178,7 +201,7 @@ const CollisionMechanism = React.forwardRef<
           repeatDelay: beamOptions.repeatDelay || 0,
         }}
         className={cn(
-          "absolute left-0 top-20 m-auto w-px rounded-full bg-gradient-to-t from-blue-400 via-blue-300 to-transparent",
+          "absolute left-0 top-20 m-auto w-px rounded-full bg-gradient-to-t from-blue-700 via-blue-600 to-transparent dark:from-blue-200 dark:via-blue-50 dark:to-transparent",
           beamOptions.className
         )}
       />
@@ -201,7 +224,7 @@ const CollisionMechanism = React.forwardRef<
 CollisionMechanism.displayName = "CollisionMechanism"
 
 const Explosion = ({ ...props }: React.HTMLProps<HTMLDivElement>) => {
-  const spans = Array.from({ length: 10 }, (_, index) => ({
+  const spans = Array.from({ length: 15 }, (_, index) => ({
     id: index,
     initialX: 0,
     initialY: 0,
@@ -210,13 +233,13 @@ const Explosion = ({ ...props }: React.HTMLProps<HTMLDivElement>) => {
   }))
 
   return (
-    <div {...props} className={cn("absolute z-50 h-2 w-2", props.className)}>
+    <div {...props} className={cn("absolute z-50 h-3 w-3", props.className)}>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 1.5, ease: "easeOut" }}
-        className="absolute -inset-x-10 top-0 m-auto h-2 w-10 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent blur-sm"
+        className="absolute -inset-x-10 top-0 m-auto h-3 w-12 rounded-full bg-gradient-to-r from-transparent via-blue-700 dark:via-blue-50 to-transparent blur-sm"
       />
       {spans.map((span) => (
         <motion.span
@@ -228,7 +251,10 @@ const Explosion = ({ ...props }: React.HTMLProps<HTMLDivElement>) => {
             opacity: 0,
           }}
           transition={{ duration: Math.random() * 1.5 + 0.5, ease: "easeOut" }}
-          className="absolute h-1 w-1 rounded-full bg-gradient-to-b from-blue-400 to-blue-500"
+          className="absolute h-2 w-2 rounded-full bg-blue-700 dark:bg-blue-50"
+          style={{
+            boxShadow: "var(--glow-shadow)",
+          }}
         />
       ))}
     </div>

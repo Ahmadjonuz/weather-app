@@ -37,14 +37,19 @@ interface LocationError extends Error {
   message: string;
 }
 
+// Helper function to create a properly formatted location error
+function createLocationError(message: string, code: number = 0): LocationError {
+  const error = new Error(message) as LocationError;
+  error.code = code;
+  error.message = message;
+  return error;
+}
+
 export async function getCurrentLocation(): Promise<{ latitude: number; longitude: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      // Create a properly formatted error object
-      const error: LocationError = new Error("Geolocation is not supported by this browser") as LocationError;
-      error.code = 0;
-      console.warn("Geolocation not supported");
-      reject(error);
+      console.warn("Geolokatsiya qo'llab-quvvatlanmaydi");
+      reject(createLocationError("Bu brauzer geolokatsiyani qo'llab-quvvatlamaydi", 0));
       return;
     }
 
@@ -57,12 +62,13 @@ export async function getCurrentLocation(): Promise<{ latitude: number; longitud
       },
       (geoError) => {
         // GeolocationPositionError has code and message properties
-        console.warn("Geolocation error:", geoError.message);
+        console.warn("Geolokatsiya xatosi:", geoError.message);
         
-        // Create a properly formatted error object with known properties
-        const error: LocationError = new Error(geoError.message || "Unknown geolocation error") as LocationError;
-        error.code = geoError.code || 0;
-        reject(error);
+        // Use our helper function to create a properly formatted error
+        reject(createLocationError(
+          geoError.message || "Noma'lum geolokatsiya xatosi", 
+          geoError.code || 0
+        ));
       },
       { timeout: 10000, maximumAge: 60000 },
     );
@@ -73,7 +79,7 @@ export async function getCurrentLocation(): Promise<{ latitude: number; longitud
 
 export async function getLocationByName(locationName: string): Promise<{ latitude: number; longitude: number }> {
   try {
-    console.log(`Searching for location: ${locationName}`)
+    console.log(`Joylashuv qidirilmoqda: ${locationName}`)
     
     // Check if the location is a known major city (case-insensitive)
     const normalizedInput = locationName.trim().toLowerCase();
@@ -81,14 +87,14 @@ export async function getLocationByName(locationName: string): Promise<{ latitud
     // Check for direct matches in our predefined list
     if (MAJOR_CITIES[normalizedInput]) {
       const coords = MAJOR_CITIES[normalizedInput];
-      console.log(`Using predefined coordinates for ${locationName}: ${coords.latitude}, ${coords.longitude}`);
+      console.log(`${locationName} uchun oldindan belgilangan koordinatalar ishlatilmoqda: ${coords.latitude}, ${coords.longitude}`);
       return coords;
     }
     
     // Otherwise check for partial matches in major cities
     for (const [cityName, coords] of Object.entries(MAJOR_CITIES)) {
       if (normalizedInput.includes(cityName) || cityName.includes(normalizedInput)) {
-        console.log(`Found partial match for ${locationName} with ${cityName}`);
+        console.log(`${locationName} uchun ${cityName} bilan qisman mos keldi`);
         return coords;
       }
     }
@@ -105,17 +111,17 @@ export async function getLocationByName(locationName: string): Promise<{ latitud
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.error(`API responded with status: ${response.status}`)
-      throw new Error(`API responded with status: ${response.status}`)
+      console.error(`API javob berdi: ${response.status} holati`)
+      throw createLocationError(`API javob berdi: ${response.status} holati`, response.status);
     }
 
     const data = await response.json()
-    console.log("Geocoding API response:", data)
+    console.log("Geocoding API javobi:", data)
 
     if (!data.results || data.results.length === 0) {
-      console.error("No results found for location:", locationName)
+      console.error("Joylashuv uchun natija topilmadi:", locationName)
       // Return default location instead of throwing an error
-      console.log("Using default location as fallback")
+      console.log("Standart joylashuv ishlatilmoqda")
       return getDefaultLocation()
     }
 
@@ -129,16 +135,16 @@ export async function getLocationByName(locationName: string): Promise<{ latitud
       longitude: bestMatch.longitude,
     }
   } catch (error) {
-    console.error("Error getting location by name:", error)
+    console.error("Nom bo'yicha joylashuvni olishda xatolik:", error)
     // Return default location instead of throwing an error
-    console.log("Using default location as fallback due to error")
+    console.log("Xatolik tufayli standart joylashuv ishlatilmoqda")
     return getDefaultLocation()
   }
 }
 
 export async function getLocationName(latitude: number, longitude: number): Promise<string> {
   try {
-    console.log(`Fetching location name for coordinates: ${latitude}, ${longitude}`);
+    console.log(`Koordinatalar uchun joylashuv nomi olinmoqda: ${latitude}, ${longitude}`);
     
     // Try to fetch location name from API with expanded parameters for better results
     try {
@@ -153,11 +159,11 @@ export async function getLocationName(latitude: number, longitude: number): Prom
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`API responded with status: ${response.status}`)
+        throw new Error(`API javob berdi: ${response.status} holati`)
       }
 
       const data = await response.json()
-      console.log("Reverse geocoding response:", data);
+      console.log("Teskari geocoding javobi:", data);
 
       if (data.results && data.results.length > 0) {
         const result = data.results[0]
@@ -184,15 +190,15 @@ export async function getLocationName(latitude: number, longitude: number): Prom
         // If we have at least one part, return the joined string
         if (parts.length > 0) {
           const locationName = parts.join(", ");
-          console.log(`Successfully resolved location name: ${locationName}`);
+          console.log(`Joylashuv nomi muvaffaqiyatli aniqlandi: ${locationName}`);
           return locationName;
         }
       }
     } catch (error) {
-      console.warn("Error fetching location name from API:", error)
+      console.warn("API dan joylashuv nomini olishda xatolik:", error)
       // Try alternative geocoding service if first one fails
       try {
-        console.log("Trying alternative geocoding service");
+        console.log("Muqobil geocoding xizmati ishlatilmoqda");
         const altController = new AbortController();
         const altTimeoutId = setTimeout(() => altController.abort(), 8000);
         
@@ -216,12 +222,12 @@ export async function getLocationName(latitude: number, longitude: number): Prom
             
             // Create a clean location name
             const locationName = [city, country].filter(Boolean).join(", ");
-            console.log(`Alternative service resolved location: ${locationName}`);
+            console.log(`Muqobil xizmat joylashuvni aniqladi: ${locationName}`);
             return locationName;
           }
         }
       } catch (altError) {
-        console.warn("Alternative geocoding service failed:", altError);
+        console.warn("Muqobil geocoding xizmati ishlamadi:", altError);
         // Continue to fallback
       }
     }
@@ -229,7 +235,7 @@ export async function getLocationName(latitude: number, longitude: number): Prom
     // Fallback: Generate location name from coordinates
     return generateLocationNameFromCoordinates(latitude, longitude)
   } catch (error) {
-    console.error("Error getting location name:", error)
+    console.error("Joylashuv nomini olishda xatolik:", error)
     return generateLocationNameFromCoordinates(latitude, longitude)
   }
 }
@@ -245,19 +251,19 @@ function generateLocationNameFromCoordinates(latitude: number, longitude: number
   
   // North, South hemisphere
   if (latitude > 0) {
-    region += "Northern ";
+    region += "Shimoliy ";
   } else {
-    region += "Southern ";
+    region += "Janubiy ";
   }
   
   // East, West hemisphere
   if (longitude > 0) {
-    region += "Eastern";
+    region += "Sharqiy";
   } else {
-    region += "Western";
+    region += "G'arbiy";
   }
   
-  return `Location in ${region} region (${lat}°, ${lon}°)`
+  return `${region} mintaqadagi joylashuv (${lat}°, ${lon}°)`
 }
 
 // Add a function to provide default coordinates (New York City)

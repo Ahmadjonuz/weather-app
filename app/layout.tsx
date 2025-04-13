@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -7,6 +7,7 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { AppProvider } from "@/contexts/app-context"
 import { ServiceWorkerRegister } from "./sw-register"
+import { Toaster } from 'sonner'
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -14,8 +15,11 @@ export const metadata: Metadata = {
   title: "Weather App | Real-time Weather Forecasts",
   description: "Get accurate weather forecasts with our beautiful weather app powered by Open-meteo",
   manifest: "/manifest.json",
+  generator: 'Karimov Ahmadjon'
+}
+
+export const viewport: Viewport = {
   themeColor: "#0ea5e9",
-  generator: 'Weather App Team'
 }
 
 export default function RootLayout({
@@ -39,11 +43,9 @@ export default function RootLayout({
             </div>
           </AppProvider>
         </ThemeProvider>
+        <Toaster position="top-center" richColors />
         <ServiceWorkerRegister />
       </body>
     </html>
   )
 }
-
-
-import './globals.css'

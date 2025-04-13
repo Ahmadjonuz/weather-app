@@ -1,13 +1,25 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
-import { Search as SearchIcon, Loader2 } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Search as SearchIcon, Loader2, MapPin } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
-import { getCurrentLocation } from "@/lib/location"
+import { getCurrentLocation, getLocationByName, getLocationName } from "@/lib/location"
+import { useToast } from "./ui/use-toast"
+import { 
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormMessage,
+} from "@/components/ui/form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import * as z from "zod"
+import { getLocationCoords } from "@/components/weather-display"
 
 // List of major cities with their known coordinates to ensure accurate results
 const MAJOR_CITIES: Record<string, { latitude: number; longitude: number }> = {
@@ -42,145 +54,164 @@ const MAJOR_CITIES: Record<string, { latitude: number; longitude: number }> = {
   "sydney": { latitude: -33.8688, longitude: 151.2093 }
 };
 
-export function Search() {
-  const [location, setLocation] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [mounted, setMounted] = useState(false)
+const formSchema = z.object({
+  location: z.string().min(1, "Manzil kiritish zarur"),
+})
+
+export function Search({ className = "" }: { className?: string }) {
   const router = useRouter()
+  const { toast: showToast } = useToast()
+  const searchParams = useSearchParams()
+  const notFound = searchParams?.get("notFound") === "true"
+  const [isLoading, setIsLoading] = useState(false)
 
-  // Handle hydration mismatch by ensuring the component is only rendered client-side
+  // Initialize form
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      location: "",
+    },
+  })
+
+  // Handle notification for not found location
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!location.trim()) {
-      toast.error("Please enter a location", {
-        description: "Type a city name to search for weather"
+    if (notFound) {
+      showToast({
+        title: "Joylashuv topilmadi",
+        description: "Siz kiritgan joylashuv topilmadi. Iltimos, boshqa joylashuvni qidirib ko'ring.",
+        variant: "destructive",
       })
-      return
+    }
+  }, [notFound, showToast])
+
+  // Handle client-side rendering
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+  
+  if (!isMounted) {
+    return null
+  }
+
+  const handleSearch = async (values: z.infer<typeof formSchema>) => {
+    if (!values.location.trim()) {
+      toast.error("Iltimos, manzilni kiriting", {
+        description: "Ob-havo ma'lumotlarini ko'rish uchun shahar yoki manzilni kiriting"
+      });
+      return;
     }
     
-    setLoading(true)
+    setIsLoading(true);
     
     try {
-      // Check if the location is a known major city (case-insensitive)
-      const normalizedInput = location.trim().toLowerCase();
+      // Normalize the search term by converting to lowercase and trimming
+      const searchTerm = values.location.trim().toLowerCase();
       
-      // Check for direct matches in our predefined list
-      if (MAJOR_CITIES[normalizedInput]) {
-        const { latitude, longitude } = MAJOR_CITIES[normalizedInput];
-        console.log(`Using predefined coordinates for ${location}: ${latitude}, ${longitude}`);
-        router.push(`/forecast?lat=${latitude}&lon=${longitude}`);
+      // Check if the search term matches a predefined major city
+      if (MAJOR_CITIES[searchTerm]) {
+        const { latitude, longitude } = MAJOR_CITIES[searchTerm];
+        router.push(`/forecast?lat=${latitude}&lon=${longitude}&name=${encodeURIComponent(values.location)}`);
         return;
       }
       
-      // Otherwise check for partial matches in major cities
-      for (const [cityName, coords] of Object.entries(MAJOR_CITIES)) {
-        if (normalizedInput.includes(cityName) || cityName.includes(normalizedInput)) {
-          console.log(`Found partial match for ${location} with ${cityName}`);
-          router.push(`/forecast?lat=${coords.latitude}&lon=${coords.longitude}`);
-          return;
-        }
+      // Fallback to geocoding API if not a predefined city
+      const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchTerm)}&count=1&language=en&format=json`);
+      const geoData = await geoResponse.json();
+      
+      if (!geoData.results || geoData.results.length === 0) {
+        setIsLoading(false);
+        toast.error("Manzil topilmadi", {
+          description: "Kiritilgan manzil topilmadi. Imlo xatolarini tekshiring yoki boshqa manzilni kiriting."
+        });
+        router.push(`/forecast?locationNotFound=true&defaultLocation=true`);
+        return;
       }
       
-      // Use geocoding API with improved parameters for better results
-      const res = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=5&language=en&format=json`
-      )
+      const { latitude, longitude, name } = geoData.results[0];
       
-      const data = await res.json()
+      // Construct the formatted location string
+      let formattedLocation = name;
+      if (geoData.results[0].admin1) formattedLocation += `, ${geoData.results[0].admin1}`;
+      if (geoData.results[0].country) formattedLocation += `, ${geoData.results[0].country}`;
       
-      if (data.results && data.results.length > 0) {
-        // Check if any result has a high match score - prefer administrative divisions (capitals, major cities)
-        const bestMatch = data.results.find(
-          (result: any) => result.admin_level === 4 || result.admin_level === 6 || result.feature_code === "PPLC"
-        ) || data.results[0]; // Fall back to first result if no administrative match
-        
-        const { latitude, longitude } = bestMatch;
-        router.push(`/forecast?lat=${latitude}&lon=${longitude}`);
-      } else {
-        // City not found - show toast and fall back to user's current location
-        toast.error("City not found", {
-          description: `"${location}" was not found. Showing weather for your current location.`
-        })
-        
-        try {
-          // Get user's current location
-          const userLocation = await getCurrentLocation();
-          console.log("Falling back to user's current location:", userLocation);
-          
-          // Navigate to forecast with user's coordinates
-          router.push(`/forecast?lat=${userLocation.latitude}&lon=${userLocation.longitude}`);
-        } catch (locationError) {
-          console.error("Failed to get user location:", locationError);
-          
-          // If geolocation fails, navigate to forecast page without params
-          // The forecast page will handle the fallback to default location
-          router.push(`/forecast`);
-        }
-      }
+      router.push(`/forecast?lat=${latitude}&lon=${longitude}&name=${encodeURIComponent(formattedLocation)}`);
+      
     } catch (error) {
-      console.error("Search error:", error);
-      
-      toast.error("Error occurred", {
-        description: "An error occurred during search. Falling back to your location."
-      })
-      
-      // Try to get user's current location as fallback
-      try {
-        const userLocation = await getCurrentLocation();
-        router.push(`/forecast?lat=${userLocation.latitude}&lon=${userLocation.longitude}`);
-      } catch (locationError) {
-        // If even that fails, just go to forecast page which will handle fallback
-        router.push(`/forecast`);
-      }
+      setIsLoading(false);
+      toast.error("Xatolik yuz berdi", {
+        description: "Ma'lumotlarni olishda xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
+      });
+      console.error("Error fetching location data:", error);
     } finally {
-      setLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  // Return a placeholder during server rendering or before hydration completes
-  if (!mounted) {
-    return (
-      <div id="search" className="w-full max-w-xl mx-auto my-4 md:my-8 px-2 md:px-0">
-        <div className="flex w-full items-center space-x-2">
-          <div className="relative flex-1">
-            <div className="h-10 md:h-12 rounded-md border border-input"></div>
-          </div>
-          <div className="h-10 md:h-12 rounded-md px-3 md:px-4"></div>
-        </div>
-      </div>
-    )
-  }
+  const handleCurrentLocation = async () => {
+    setIsLoading(true);
+    try {
+      const coords = await getLocationCoords();
+      router.push(`/forecast?lat=${coords.latitude}&lon=${coords.longitude}`);
+    } catch (error) {
+      console.error("Error getting current location:", error);
+      toast.error("Joylashuvni aniqlashda xatolik", {
+        description: "Joriy joylashuvingizni aniqlab bo'lmadi. Iltimos, brauzer sozlamalarida joylashuv xizmatlariga ruxsat bering.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div id="search" className="w-full max-w-xl mx-auto my-4 md:my-8 px-2 md:px-0">
-      <form onSubmit={handleSearch} className="flex w-full items-center space-x-2">
-        <div className="relative flex-1">
-          <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Enter city or location name..."
-            className="pl-9 h-10 md:h-12 text-sm md:text-base"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-          />
-        </div>
-        <Button
-          type="submit"
-          disabled={loading}
-          className="h-10 md:h-12 text-sm md:text-base px-3 md:px-4 bg-blue-500 hover:bg-blue-600"
-        >
-          {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            "Search"
-          )}
-        </Button>
-      </form>
+    <div className={className}>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSearch)} className="flex flex-row gap-2">
+          <div className="flex-1">
+            <FormField
+              control={form.control}
+              name="location"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="relative items-center">
+                      <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        className="pl-9 pr-14 py-2 bg-background"
+                        placeholder="Shahar yoki manzilni kiriting..."
+                        disabled={isLoading}
+                        {...field}
+                      />
+                      <div className="absolute right-2 top-0.5 -mt-1">
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={handleCurrentLocation}
+                          disabled={isLoading}
+                          title="Joriy joyni aniqlash"
+                        >
+                          <MapPin className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <Button 
+            type="submit" 
+            variant="default" 
+            className="h-10 px-4" 
+            disabled={isLoading}
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Qidirish"}
+          </Button>
+        </form>
+      </Form>
     </div>
   )
 }
