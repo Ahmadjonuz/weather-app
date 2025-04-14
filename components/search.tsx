@@ -41,6 +41,7 @@ const MAJOR_CITIES: Record<string, { latitude: number; longitude: number }> = {
   "gulistan": { latitude: 40.4897, longitude: 68.7898 },
   "jizzakh": { latitude: 40.1216, longitude: 67.8422 },
   "jizzax": { latitude: 40.1216, longitude: 67.8422 }, // Uzbek spelling
+  "nurafshon": { latitude: 41.0421, longitude: 69.3409 }, // Added Nurafshon
   // Add common international cities
   "new york": { latitude: 40.7128, longitude: -74.0060 },
   "london": { latitude: 51.5074, longitude: -0.1278 },
@@ -115,9 +116,23 @@ export function Search({ className = "" }: { className?: string }) {
         return;
       }
       
+      // Check if search term is contained in any major city name
+      const partialMatch = Object.keys(MAJOR_CITIES).find(city => 
+        city.includes(searchTerm) || searchTerm.includes(city)
+      );
+      
+      if (partialMatch) {
+        const { latitude, longitude } = MAJOR_CITIES[partialMatch];
+        router.push(`/forecast?lat=${latitude}&lon=${longitude}&name=${encodeURIComponent(partialMatch)}`);
+        return;
+      }
+      
       // Fallback to geocoding API if not a predefined city
-      const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchTerm)}&count=1&language=en&format=json`);
+      const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchTerm)}&count=5&language=en&format=json`);
       const geoData = await geoResponse.json();
+      
+      // Debug API response
+      console.log("Geocoding API response:", geoData);
       
       if (!geoData.results || geoData.results.length === 0) {
         setIsLoading(false);
@@ -128,12 +143,25 @@ export function Search({ className = "" }: { className?: string }) {
         return;
       }
       
-      const { latitude, longitude, name } = geoData.results[0];
+      // Prioritize city results over districts/villages
+      let selectedResult = geoData.results[0]; // Default to first result
+      
+      // Try to find a result that's a city (feature_code starts with 'PPL')
+      const cityResult = geoData.results.find((result: any) => 
+        result.feature_code?.startsWith('PPL') || 
+        (result.admin_level && parseInt(result.admin_level) <= 2)
+      );
+      
+      if (cityResult) {
+        selectedResult = cityResult;
+      }
+      
+      const { latitude, longitude, name } = selectedResult;
       
       // Construct the formatted location string
       let formattedLocation = name;
-      if (geoData.results[0].admin1) formattedLocation += `, ${geoData.results[0].admin1}`;
-      if (geoData.results[0].country) formattedLocation += `, ${geoData.results[0].country}`;
+      if (selectedResult.admin1) formattedLocation += `, ${selectedResult.admin1}`;
+      if (selectedResult.country) formattedLocation += `, ${selectedResult.country}`;
       
       router.push(`/forecast?lat=${latitude}&lon=${longitude}&name=${encodeURIComponent(formattedLocation)}`);
       
